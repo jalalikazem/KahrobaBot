@@ -10,6 +10,7 @@ import jdatetime  # Import the library
 from PIL import Image
 import io
 import re
+import textwrap
 
 # تنظیمات اولیه
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -126,6 +127,7 @@ class InvoicePDF(FPDF):
         # Spacing after bullet points
         self.ln(5)
 
+    
     def invoice_body(self, items):
         # Table Header
         self.set_font('Vazir' if os.path.exists('Vazir.ttf') else 'Arial', '', 12)
@@ -142,21 +144,44 @@ class InvoicePDF(FPDF):
             name, quantity, unit_price = item
             total = quantity * unit_price
             total_price += total
+
             idx_text = str(idx)
-            name_text = get_display(arabic_reshaper.reshape(name))
             quantity_text = str(quantity)
             unit_price_text = get_display(arabic_reshaper.reshape(f'{unit_price:,}'))
             total_text = get_display(arabic_reshaper.reshape(f'{total:,}'))
-            self.cell(40, 10, total_text, 1, 0, 'C')
-            self.cell(40, 10, unit_price_text, 1, 0, 'C')
-            self.cell(15, 10, quantity_text, 1, 0, 'C')
-            self.cell(83, 10, name_text, 1, 0, 'C')
-            self.cell(12, 10, idx_text, 1, 1, 'C')
+
+            # Wrap product name intelligently at spaces
+            name_text = get_display(arabic_reshaper.reshape(name))
+            max_width = 38  # Maximum characters per line
+            wrapped_lines = textwrap.wrap(name_text, width=max_width, break_long_words=False)
+
+            # Reverse the order of wrapped lines for correct Arabic/Persian display
+            wrapped_lines = wrapped_lines[::-1]  
+            wrapped_name = "\n".join(wrapped_lines)
+
+            # Calculate the required height for the cell
+            line_height = 8  # Adjust the line height for better spacing
+            num_lines = len(wrapped_lines)
+            cell_height = line_height * num_lines
+
+            # Align other cells to match the height of the name cell
+            self.cell(40, cell_height, total_text, 1, 0, 'C')
+            self.cell(40, cell_height, unit_price_text, 1, 0, 'C')
+            self.cell(15, cell_height, quantity_text, 1, 0, 'C')
+
+            # Handle multi-line for product name
+            x = self.get_x()
+            y = self.get_y()
+            self.multi_cell(83, line_height, wrapped_name, 1, 'C')
+            self.set_xy(x + 83, y)  # Reset X position after multi_cell
+
+            self.cell(12, cell_height, idx_text, 1, 1, 'C')  # Move to the next line
 
         # Total Price
         total_price_text = get_display(arabic_reshaper.reshape(f'{total_price:,} ریال'))
         self.cell(40, 10, total_price_text, 1, 0, 'C')
         self.cell(150, 10, get_display(arabic_reshaper.reshape('جمع کل')), 1, 1, 'R')
+
 
 # تابع ایجاد فاکتور
 def generate_invoice_pdf(file_path, items, user_id, customer=None):
