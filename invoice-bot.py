@@ -12,6 +12,7 @@ import io
 import re
 import textwrap
 
+dollarFee = 82600 # Example multiplier
 # تنظیمات اولیه
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
@@ -129,6 +130,8 @@ class InvoicePDF(FPDF):
 
     
     def invoice_body(self, items):
+        global dollarFee  # Use the global dollarFee variable
+
         # Table Header
         self.set_font('Vazir' if os.path.exists('Vazir.ttf') else 'Arial', '', 12)
         self.cell(40, 10, get_display(arabic_reshaper.reshape('قیمت کل (ریال)')), 1, 0, 'C')
@@ -142,12 +145,19 @@ class InvoicePDF(FPDF):
         total_price = 0
         for idx, item in enumerate(items, start=1):
             name, quantity, unit_price = item
-            total = quantity * unit_price
+
+            # Apply dollarFee multiplier to the unit price
+            adjusted_unit_price = unit_price * dollarFee
+            
+            # Round the adjusted unit price to the nearest multiple of 1000
+            adjusted_unit_price = round(adjusted_unit_price / 1000) * 1000
+            
+            total = quantity * adjusted_unit_price
             total_price += total
 
             idx_text = str(idx)
             quantity_text = str(quantity)
-            unit_price_text = get_display(arabic_reshaper.reshape(f'{unit_price:,}'))
+            unit_price_text = get_display(arabic_reshaper.reshape(f'{adjusted_unit_price:,}'))
             total_text = get_display(arabic_reshaper.reshape(f'{total:,}'))
 
             # Wrap product name intelligently at spaces
@@ -223,42 +233,40 @@ async def contact_handler(update, context):
     await update.message.reply_text('شماره تلفن شما ذخیره شد. لطفاً نام فروشگاه و نام فروشنده را به شکل زیر وارد کنید:\n\nفروشگاه: نام فروشگاه - فروشنده: نام فروشنده')
 
 async def handle_store_info(update, context):
-    user_id = update.effective_user.id
+    user_id = str(update.effective_user.id)
     user_data = get_user_data(user_id)
-    if user_data.get('state') == 'awaiting_store_info':
-        try:
-            store_info = update.message.text.split('-')
-            store_name = store_info[0].split(':')[1].strip()
-            seller_name = store_info[1].split(':')[1].strip()
-            user_data['store_name'] = store_name
-            user_data['seller_name'] = seller_name
-            user_data['state'] = 'ready'
-            save_user_data(user_id, user_data)
-            await update.message.reply_text('اطلاعات فروشگاه شما ذخیره شد.')
-            # نمایش منوی افزودن آیتم و صدور فاکتور پس از ذخیره اطلاعات فروشگاه
-            keyboard = [[KeyboardButton("افزودن آیتم"), KeyboardButton("صدور فاکتور")]]
-            reply_markup = ReplyKeyboardMarkup(keyboard)
-            await update.message.reply_text('لطفاً انتخاب کنید:', reply_markup=reply_markup)
-        except (IndexError, ValueError):
-            await update.message.reply_text('فرمت وارد شده صحیح نیست. لطفاً به شکل صحیح وارد کنید:\n\nفروشگاه: نام فروشگاه - فروشنده: نام فروشنده')
-    else:
-        await handle_add_item(update, context)
+
+    if user_data.get('state') != 'awaiting_store_info':
+        return False  # State does not match, so return and continue to next handler
+
+    try:
+        store_info = update.message.text.split('-')
+        store_name = store_info[0].split(':')[1].strip()
+        seller_name = store_info[1].split(':')[1].strip()
+        user_data['store_name'] = store_name
+        user_data['seller_name'] = seller_name
+        user_data['state'] = 'ready'
+        save_user_data(user_id, user_data)
+        await update.message.reply_text('اطلاعات فروشگاه شما ذخیره شد.')
+        return True  # Input processed successfully
+    except (IndexError, ValueError):
+        return False  # Return False to allow other handlers to process the input
+
+
 
 async def handle_add_item(update, context):
     user_id = str(update.effective_user.id)
     user_data = get_user_data(user_id)
 
-    # Check if the user is in the correct state
     if user_data.get('state') != 'adding_item':
-        await update.message.reply_text("دستور نامعتبر است. لطفاً دوباره تلاش کنید.")
-        return
+        return False  # State does not match, so return and continue to next handler
 
-    products = user_data.get('products', {})
     product_id = update.message.text.strip()
+    products = user_data.get('products', {})
 
     if product_id not in products:
         await update.message.reply_text(f"محصولی با ID '{product_id}' یافت نشد.")
-        return
+        return False  # Return False to allow other handlers to process the input
 
     product = products[product_id]
     if 'items' not in context.user_data:
@@ -269,6 +277,8 @@ async def handle_add_item(update, context):
     save_user_data(user_id, user_data)
 
     await update.message.reply_text(f"محصول '{product['name']}' به فاکتور اضافه شد.")
+    return True  # Input processed successfully
+
 
 async def add_item_handler(update, context):
     user_id = str(update.effective_user.id)
@@ -381,14 +391,12 @@ async def add_product_handler(update, context):
     )
     
 
-
 async def add_product(update, context):
     user_id = str(update.effective_user.id)
     user_data = get_user_data(user_id)
 
     if user_data.get('state') != 'adding_product':
-        await update.message.reply_text("دستور نامعتبر است. لطفاً دوباره تلاش کنید.")
-        return
+        return False  # State does not match, so return and continue to next handler
 
     try:
         product_info = update.message.text.split('-')
@@ -400,8 +408,9 @@ async def add_product(update, context):
         user_data['state'] = 'ready'
         save_user_data(user_id, user_data)
         await update.message.reply_text(f"محصول '{name}' با قیمت {price} تومان اضافه شد. شناسه محصول: {product_id}")
+        return True  # Input processed successfully
     except (IndexError, ValueError):
-        await update.message.reply_text("فرمت وارد شده صحیح نیست. لطفاً به شکل زیر وارد کنید:\n\nنام محصول-قیمت واحد")
+        return False  # Return False to allow other handlers to process the input
 
 
 
@@ -483,8 +492,7 @@ async def save_customer(update, context):
     user_data = get_user_data(user_id)
 
     if user_data.get('state') != 'adding_customer':
-        await update.message.reply_text("دستور نامعتبر است. لطفاً دوباره تلاش کنید.")
-        return
+        return False  # State does not match, so return and continue to next handler
 
     try:
         customer_info = update.message.text.split('-')
@@ -501,8 +509,11 @@ async def save_customer(update, context):
         save_user_data(user_id, user_data)
 
         await update.message.reply_text(f"مشتری '{name}' با کد '{code}' ذخیره شد.")
+        return True  # Input processed successfully
     except (IndexError, ValueError):
-        await update.message.reply_text("فرمت وارد شده صحیح نیست. لطفاً دوباره تلاش کنید.")
+        return False  # Return False to allow other handlers to process the input
+
+
 
 async def view_customers(update, context):
     user_id = str(update.effective_user.id)
@@ -603,6 +614,24 @@ async def generate_invoice(update, context):
 
     await update.message.reply_text("فاکتور شما صادر شد.")
 
+
+async def handle_input(update, context, handlers):
+        """
+        Iterates over the handlers and calls the first one that can process the input.
+        """
+        for handler in handlers:
+            # Check if the handler can process the input
+            if await handler(update, context):
+                return  # Exit as the handler has processed the input
+        # If no handler processed the input, continue to the next one
+        await update.message.reply_text("فرمت وارد شده معتبر نیست یا در حال حاضر قابل پردازش نیست.")
+
+
+async def main_handler(update, context):
+    handlers = [add_product, save_customer, handle_store_info, handle_add_item]
+    await handle_input(update, context, handlers)
+
+
 # تابع اصلی
 def main():
     # توکن بات خود را اینجا وارد کنید
@@ -629,7 +658,7 @@ def main():
     application.add_handler(MessageHandler(filters.Regex(r'^[Cc]\d+$'), save_selected_customer))
     application.add_handler(MessageHandler(filters.PHOTO, store_logo_handler))  # Photo upload handler
 
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, save_customer))  # Save customer info
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, main_handler))  # Save customer info
 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_store_info))  # Store information
 
