@@ -12,7 +12,7 @@ import io
 import re
 import textwrap
 
-dollarFee = 82600 # Example multiplier
+dollarFee = 83600 # Example multiplier
 # تنظیمات اولیه
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
@@ -113,36 +113,50 @@ class InvoicePDF(FPDF):
 
         # Prepare the lines with bullet points
         description = get_display(arabic_reshaper.reshape(
-            '• با توجه به نوسانات نرخ ارز اعتبار پیش فاکتور تنها دو روز می باشد.'
+            '• با توجه به نوسانات نرخ ارز اعتبار پیش فاکتور تنها یک روز می باشد.'
         ))
         contact = get_display(arabic_reshaper.reshape('• شماره تماس 09109359043'))
-        installation_notice = get_display(arabic_reshaper.reshape(
-            '• اجرت نصب پس از نهایی شدن فاکتور محاسبه و اعمال می‌شود'
-        ))
+        
 
         # Add the lines to the PDF (right-aligned)
         self.cell(0, 10, description, align='R', ln=True)
         self.cell(0, 10, contact, align='R', ln=True)
-        self.cell(0, 10, installation_notice, align='R', ln=True)
-
+        
         # Spacing after bullet points
         self.ln(5)
 
-    
     def invoice_body(self, items):
         global dollarFee  # Use the global dollarFee variable
 
-        # Table Header
+        # Step 1: Calculate the total price of items after applying dollarFee
+        total_price = 0
+        for idx, item in enumerate(items, start=1):
+            name, quantity, unit_price = item
+
+            # Apply dollarFee multiplier to the unit price
+            adjusted_unit_price = unit_price * dollarFee
+            
+            # Round the adjusted unit price to the nearest multiple of 1000
+            adjusted_unit_price = round(adjusted_unit_price / 1000) * 1000
+            
+            total = quantity * adjusted_unit_price
+            total_price += total
+
+        # Step 2: Calculate the "اجرت نصب" (installation fee) as 20% of the total price
+        installation_fee = total_price * 0.20  # 20% of the total price
+        installation_fee = round(installation_fee / 1000) * 1000  # Round to the nearest 1000
+
+        # Step 3: Table Header for products (excluding installation fee)
         self.set_font('Vazir' if os.path.exists('Vazir.ttf') else 'Arial', '', 12)
-        self.cell(40, 10, get_display(arabic_reshaper.reshape('قیمت کل (ریال)')), 1, 0, 'C')
-        self.cell(40, 10, get_display(arabic_reshaper.reshape('قیمت واحد (ریال)')), 1, 0, 'C')
+        self.cell(40, 10, get_display(arabic_reshaper.reshape('قیمت کل (تومان)')), 1, 0, 'C')
+        self.cell(40, 10, get_display(arabic_reshaper.reshape('قیمت واحد (تومان)')), 1, 0, 'C')
         self.cell(15, 10, get_display(arabic_reshaper.reshape('تعداد')), 1, 0, 'C')
         self.cell(83, 10, get_display(arabic_reshaper.reshape('شرح کالا یا خدمات')), 1, 0, 'C')
         self.cell(12, 10, get_display(arabic_reshaper.reshape('ردیف')), 1, 1, 'C')
 
-        # Table Body
-        self.set_font('Vazir' if os.path.exists('Vazir.ttf') else 'Arial', '', 12)
+        # Step 4: Table Body for products
         total_price = 0
+        self.set_font('Vazir' if os.path.exists('Vazir.ttf') else 'Arial', '', 12)
         for idx, item in enumerate(items, start=1):
             name, quantity, unit_price = item
 
@@ -187,10 +201,19 @@ class InvoicePDF(FPDF):
 
             self.cell(12, cell_height, idx_text, 1, 1, 'C')  # Move to the next line
 
-        # Total Price
-        total_price_text = get_display(arabic_reshaper.reshape(f'{total_price:,} ریال'))
+        # Step 5: Display Installation Fee as a separate item
+        installation_fee_text = get_display(arabic_reshaper.reshape(f"{installation_fee:,}"))
+        self.cell(40, 10, installation_fee_text, 1, 0, 'C')
+        self.cell(150, 10, get_display(arabic_reshaper.reshape('اجرت نصب و راه‌اندازی سیستم')), 1, 1, 'R')
+
+        # Step 6: Total Price (including اجرت نصب)
+        total_price_with_installation = total_price + installation_fee
+        total_price_text = get_display(arabic_reshaper.reshape(f'{total_price_with_installation:,} تومان'))
         self.cell(40, 10, total_price_text, 1, 0, 'C')
         self.cell(150, 10, get_display(arabic_reshaper.reshape('جمع کل')), 1, 1, 'R')
+
+
+
 
 
 # تابع ایجاد فاکتور
