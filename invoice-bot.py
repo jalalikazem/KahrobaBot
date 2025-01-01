@@ -11,6 +11,7 @@ from PIL import Image
 import io
 import re
 import textwrap
+from datetime import datetime
 
 dollarFee = 83600 # Example multiplier
 # تنظیمات اولیه
@@ -88,14 +89,20 @@ class InvoicePDF(FPDF):
         seller_name = user_data.get('seller_name', 'نام فروشنده تعریف نشده')
         current_date = jdatetime.date.today().strftime('%Y/%m/%d')
 
+        # Generate the unique invoice number
+        current_datetime = datetime.now().strftime("%y%m%d%H%M")
+        customer_code = self.customer["code"] if self.customer else "0000"
+        invoice_number = f"{current_datetime}{customer_code}"
+        
         # Layout adjustments for Seller Info
         self.set_font('Vazir' if os.path.exists('Vazir.ttf') else 'Arial', '', 12)
         self.cell(95, 10, get_display(arabic_reshaper.reshape(f'تاریخ: {current_date}')), 1, 0, 'R')
-        self.cell(95, 10, get_display(arabic_reshaper.reshape(f'شماره فاکتور: 0238')), 1, 1, 'R')
+        self.cell(95, 10, get_display(arabic_reshaper.reshape(f'شماره فاکتور: {invoice_number}')), 1, 1, 'R')
         self.cell(95, 10, get_display(arabic_reshaper.reshape(f'توسط: {seller_name}')), 1, 0, 'R')
         self.cell(95, 10, get_display(arabic_reshaper.reshape(f'فروشگاه: {store_name}')), 1, 1, 'R')
         self.ln(2)  # Space after seller info
-         # Add customer details
+        
+        # Add customer details
         customer = self.customer
         if customer:
             self.cell(95, 10, get_display(arabic_reshaper.reshape(f'نام مشتری: {customer["name"]}')), 1, 0, 'R')
@@ -217,13 +224,36 @@ class InvoicePDF(FPDF):
 
 
 # تابع ایجاد فاکتور
-def generate_invoice_pdf(file_path, items, user_id, customer=None):
+
+
+
+def generate_invoice_pdf(items, user_id, customer=None):
+    # Generate the unique invoice number and file name
+    current_datetime = datetime.now().strftime("%y%m%d%H%M")
+    customer_code = customer["code"] if customer else "0000"
+    invoice_number = f"{current_datetime}{customer_code}"
+
+    # Create folder for the user if it doesn't exist
+    user_folder = os.path.join("invoiceFiles", str(user_id))
+    os.makedirs(user_folder, exist_ok=True)
+
+    # Create the invoice file name with invoice number and customer name
+    customer_name = customer["name"] if customer else "Unknown"
+    invoice_filename = f"{invoice_number}_{customer_name}.pdf"
+    file_path = os.path.join(user_folder, invoice_filename)
+
+    # Generate the PDF invoice
     pdf = InvoicePDF()
     pdf.customer = customer
     pdf.user_id = user_id
+    pdf.invoice_number = invoice_number  # Pass the invoice number to the header
+
     pdf.add_page()
     pdf.invoice_body(items)
     pdf.output(file_path)
+
+    return file_path  # Return the full path of the generated invoice
+
 
 # تابع مدیریت بات تلگرام
 async def start(update, context):
@@ -425,8 +455,9 @@ async def add_product(update, context):
         product_info = update.message.text.split('-')
         name = product_info[0].strip()
         price = int(product_info[1].strip())
-        product_id = f"{user_id}-{len(user_data['products']) + 1}"  # Unique ID per user
-
+        last_product_id = user_data['last_product_id']
+        product_id = f"{user_id}-{last_product_id + 1}"  # Unique ID per user
+        user_data['last_product_id'] = last_product_id + 1
         user_data['products'][product_id] = {"name": name, "price": price}
         user_data['state'] = 'ready'
         save_user_data(user_id, user_data)
@@ -613,7 +644,6 @@ async def save_selected_customer(update, context):
         reply_markup=reply_markup
     )
 
-
 async def generate_invoice(update, context):
     user_id = update.effective_user.id
     items = context.user_data.get('items', [])
@@ -627,11 +657,14 @@ async def generate_invoice(update, context):
         await update.message.reply_text("لطفاً ابتدا یک مشتری انتخاب کنید.")
         return
 
-    file_path = 'invoice.pdf'
-    generate_invoice_pdf(file_path, items, user_id, customer)
-    await update.message.reply_document(document=open(file_path, 'rb'))
+    # Generate the invoice file and get the file path
+    file_path = generate_invoice_pdf(items=items, user_id=user_id, customer=customer)
 
-    # Clear items and customer
+    # Send the invoice file with the correct name
+    with open(file_path, 'rb') as file:
+        await update.message.reply_document(document=file)
+
+    # Clear items and customer after sending the invoice
     context.user_data['items'] = []
     context.user_data['selected_customer'] = None
 
