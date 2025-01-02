@@ -54,82 +54,86 @@ def get_user_state(user_id):
 
 # کلاس ایجاد فاکتور
 class InvoicePDF(FPDF):
+    
     def header(self):
-        # Add the font
-        if os.path.exists('Vazir.ttf'):
-            self.add_font('Vazir', '', 'Vazir.ttf', uni=True)
-            self.set_font('Vazir', '', 14)
+        # Only add the header on the first page
+        if self.page_no() == 1:
+            # Add the font
+            if os.path.exists('Vazir.ttf'):
+                self.add_font('Vazir', '', 'Vazir.ttf', uni=True)
+                self.set_font('Vazir', '', 14)
+            else:
+                self.set_font('Arial', '', 14)
+                logger.warning("فایل فونت یافت نشد، از Arial استفاده می‌شود.")
+
+            # Add the logo (aligned to the right)
+            logo_path = f'logos/{self.user_id}.png'  # Adjust based on your storage structure
+            if os.path.exists(logo_path):
+                self.image(logo_path, x=170, y=10, w=30)  # Logo on the right
+
+            # Add the title (centered horizontally)
+            title = get_display(arabic_reshaper.reshape('به نام ایزد یکتا'))
+            self.set_xy(10, 15)  # Position cursor for the title
+            self.cell(0, 10, title, align='C', ln=True)  # Center the title in the row
+
+            # Add the additional lines
+            line1 = get_display(arabic_reshaper.reshape('فاکتور فروش'))
+            line2 = get_display(arabic_reshaper.reshape('خانه هوشمند کهربا'))
+            self.set_font('Vazir', '', 12)  # Adjust font size for these lines
+            self.cell(0, 10, line1, align='C', ln=True)  # First additional line
+            self.cell(0, 10, line2, align='C', ln=True)  # Second additional line
+
+            # Add spacing after the header
+            self.ln(10)
+
+            # Seller Info
+            user_data = get_user_data(self.user_id)
+            store_name = user_data.get('store_name', 'نام فروشگاه تعریف نشده')
+            seller_name = user_data.get('seller_name', 'نام فروشنده تعریف نشده')
+            current_date = jdatetime.date.today().strftime('%Y/%m/%d')
+
+            # Generate the unique invoice number
+            current_datetime = datetime.now().strftime("%y%m%d%H%M")
+            customer_code = self.customer["code"] if self.customer else "0000"
+            invoice_number = f"{current_datetime}{customer_code}"
+
+            # Layout adjustments for Seller Info
+            self.set_font('Vazir' if os.path.exists('Vazir.ttf') else 'Arial', '', 12)
+            self.cell(95, 10, get_display(arabic_reshaper.reshape(f'تاریخ: {current_date}')), 1, 0, 'R')
+            self.cell(95, 10, get_display(arabic_reshaper.reshape(f'شماره فاکتور: {invoice_number}')), 1, 1, 'R')
+            self.cell(95, 10, get_display(arabic_reshaper.reshape(f'توسط: {seller_name}')), 1, 0, 'R')
+            self.cell(95, 10, get_display(arabic_reshaper.reshape(f'فروشگاه: {store_name}')), 1, 1, 'R')
+            self.ln(2)  # Space after seller info
+
+            # Add customer details
+            customer = self.customer
+            if customer:
+                self.cell(95, 10, get_display(arabic_reshaper.reshape(f'نام مشتری: {customer["name"]}')), 1, 0, 'R')
+                self.cell(95, 10, get_display(arabic_reshaper.reshape(f'شماره تماس: {customer["phone"]}')), 1, 1, 'R')
+                self.cell(95, 10, get_display(arabic_reshaper.reshape(f'آدرس: {customer["address"]}')), 1, 0, 'R')
+                self.cell(95, 10, get_display(arabic_reshaper.reshape(f'کد مشتری: {customer["code"]}')), 1, 1, 'R')
+            self.ln(10)
         else:
-            self.set_font('Arial', '', 14)
-            logger.warning("فایل فونت یافت نشد، از Arial استفاده می‌شود.")
-
-        # Add the logo (aligned to the right)
-        logo_path = f'logos/{self.user_id}.png'  # Adjust based on your storage structure
-        if os.path.exists(logo_path):
-            self.image(logo_path, x=170, y=10, w=30)  # Logo on the right
-
-        # Add the title (centered horizontally)
-        title = get_display(arabic_reshaper.reshape('به نام ایزد یکتا'))
-        self.set_xy(10, 15)  # Position cursor for the title
-        self.cell(0, 10, title, align='C', ln=True)  # Center the title in the row
-
-        # Add the additional lines
-        line1 = get_display(arabic_reshaper.reshape('فاکتور فروش'))
-        line2 = get_display(arabic_reshaper.reshape('خانه هوشمند کهربا'))
-        self.set_font('Vazir', '', 12)  # Adjust font size for these lines
-        self.cell(0, 10, line1, align='C', ln=True)  # First additional line
-        self.cell(0, 10, line2, align='C', ln=True)  # Second additional line
-
-        # Add spacing after the header
-        self.ln(10)
-
-        # Seller Info
-        user_data = get_user_data(self.user_id)
-        store_name = user_data.get('store_name', 'نام فروشگاه تعریف نشده')
-        seller_name = user_data.get('seller_name', 'نام فروشنده تعریف نشده')
-        current_date = jdatetime.date.today().strftime('%Y/%m/%d')
-
-        # Generate the unique invoice number
-        current_datetime = datetime.now().strftime("%y%m%d%H%M")
-        customer_code = self.customer["code"] if self.customer else "0000"
-        invoice_number = f"{current_datetime}{customer_code}"
-        
-        # Layout adjustments for Seller Info
-        self.set_font('Vazir' if os.path.exists('Vazir.ttf') else 'Arial', '', 12)
-        self.cell(95, 10, get_display(arabic_reshaper.reshape(f'تاریخ: {current_date}')), 1, 0, 'R')
-        self.cell(95, 10, get_display(arabic_reshaper.reshape(f'شماره فاکتور: {invoice_number}')), 1, 1, 'R')
-        self.cell(95, 10, get_display(arabic_reshaper.reshape(f'توسط: {seller_name}')), 1, 0, 'R')
-        self.cell(95, 10, get_display(arabic_reshaper.reshape(f'فروشگاه: {store_name}')), 1, 1, 'R')
-        self.ln(2)  # Space after seller info
-        
-        # Add customer details
-        customer = self.customer
-        if customer:
-            self.cell(95, 10, get_display(arabic_reshaper.reshape(f'نام مشتری: {customer["name"]}')), 1, 0, 'R')
-            self.cell(95, 10, get_display(arabic_reshaper.reshape(f'شماره تماس: {customer["phone"]}')), 1, 1, 'R')
-            self.cell(95, 10, get_display(arabic_reshaper.reshape(f'آدرس: {customer["address"]}')), 1, 0, 'R')
-            self.cell(95, 10, get_display(arabic_reshaper.reshape(f'کد مشتری: {customer["code"]}')), 1, 1, 'R')
-        self.ln(10)
+            # If not the first page, we just return without doing anything (no header)
+            pass
 
     def footer(self):
-        self.set_y(-50)  # Set position 50 units from the bottom of the page
-        if os.path.exists('Vazir.ttf'):
-            self.set_font('Vazir', '', 12)
-        else:
-            self.set_font('Arial', '', 12)
+        # Move to the last available position after the items
+        self.ln(10)  # Add space before the footer
 
-        # Prepare the lines with bullet points
+        # Prepare the footer content
+        self.set_font('Vazir' if os.path.exists('Vazir.ttf') else 'Arial', '', 10)
+        
         description = get_display(arabic_reshaper.reshape(
             '• با توجه به نوسانات نرخ ارز اعتبار پیش فاکتور تنها یک روز می باشد.'
         ))
         contact = get_display(arabic_reshaper.reshape('• شماره تماس 09109359043'))
         
-
         # Add the lines to the PDF (right-aligned)
         self.cell(0, 10, description, align='R', ln=True)
         self.cell(0, 10, contact, align='R', ln=True)
         
-        # Spacing after bullet points
+        # Additional spacing after bullet points (if needed)
         self.ln(5)
 
     def invoice_body(self, items):
@@ -584,20 +588,29 @@ async def view_customers(update, context):
 
     await update.message.reply_text(customer_list)
 
+
+from telegram import ReplyKeyboardMarkup, KeyboardButton
+
 async def select_customer_handler(update, context):
     user_id = str(update.effective_user.id)
     user_data = get_user_data(user_id)
 
-    if not user_data.get('customers'):
+    customers = user_data.get('customers', {})
+    if not customers:
         await update.message.reply_text("شما هیچ مشتری‌ای ثبت نکرده‌اید. ابتدا مشتری اضافه کنید.")
         return
 
+    # Prepare a dynamic keyboard with customer names
+    keyboard = [[KeyboardButton(customer["name"])] for customer in customers.values()]
+    reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True)
+
+    # Ask the user to select a customer
+    await update.message.reply_text("لطفاً مشتری مورد نظر خود را انتخاب کنید:", reply_markup=reply_markup)
+
+    # Update the user state to 'selecting_customer'
     user_data['state'] = 'selecting_customer'
     save_user_data(user_id, user_data)
 
-    await update.message.reply_text(
-        "لطفاً کد مشتری مورد نظر را با پیشوند 'C' یا 'c' وارد کنید (مثال: C12 برای مشتری با کد 12)."
-    )
 
 
 async def save_selected_customer(update, context):
@@ -606,31 +619,34 @@ async def save_selected_customer(update, context):
 
     if user_data.get('state') != 'selecting_customer':
         await update.message.reply_text("دستور نامعتبر است.")
-        return
+        return False
 
-    # Validate input format (e.g., C12 or c12)
-    code_match = re.match(r'^[Cc](\d+)$', update.message.text.strip())
-    if not code_match:
-        await update.message.reply_text(
-            "کد مشتری نامعتبر است. لطفاً کد مشتری را با پیشوند 'C' یا 'c' وارد کنید (مثال: C12)."
-        )
-        return
-
-    # Extract the numeric part of the code
-    numeric_code = code_match.group(1)  # Get the digits after 'C' or 'c'
-
+    # Get the selected customer name
+    selected_name = update.message.text.strip()
     customers = user_data.get('customers', {})
 
-    if numeric_code not in customers:
-        await update.message.reply_text(f"مشتری با کد '{numeric_code}' یافت نشد. لطفاً دوباره تلاش کنید.")
-        return
+    # Find the customer based on the name
+    selected_customer = None
+    for customer in customers.values():
+        if customer["name"] == selected_name:
+            selected_customer = customer
+            break
+
+    if not selected_customer:
+        await update.message.reply_text(f"مشتری با نام '{selected_name}' یافت نشد. لطفاً دوباره تلاش کنید.")
+        return False
 
     # Save the selected customer in the context
-    context.user_data['selected_customer'] = customers[numeric_code]
+    context.user_data['selected_customer'] = selected_customer
     user_data['state'] = 'ready'
     save_user_data(user_id, user_data)
 
-    # Main menu keyboard
+    # Send confirmation message with the selected customer
+    await update.message.reply_text(
+        f"مشتری '{selected_customer['name']}' انتخاب شد."
+    )
+
+    # Show the main menu again
     keyboard = [
         [KeyboardButton("افزودن محصول"), KeyboardButton("مشاهده محصولات")],
         [KeyboardButton("افزودن آیتم"), KeyboardButton("صدور فاکتور")],
@@ -638,11 +654,10 @@ async def save_selected_customer(update, context):
         [KeyboardButton("انتخاب مشتری"), KeyboardButton("آپلود لوگوی فروشگاه")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard)
+    await update.message.reply_text('لطفاً انتخاب کنید:', reply_markup=reply_markup)
+    return True
 
-    await update.message.reply_text(
-        f"مشتری '{customers[numeric_code]['name']}' انتخاب شد.",
-        reply_markup=reply_markup
-    )
+
 
 async def generate_invoice(update, context):
     user_id = update.effective_user.id
@@ -684,7 +699,7 @@ async def handle_input(update, context, handlers):
 
 
 async def main_handler(update, context):
-    handlers = [add_product, save_customer, handle_store_info, handle_add_item]
+    handlers = [add_product, save_customer,save_selected_customer, handle_store_info, handle_add_item]
     await handle_input(update, context, handlers)
 
 
